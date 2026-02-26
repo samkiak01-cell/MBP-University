@@ -33,36 +33,53 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Custom CSS — myBasePay brand theme ──────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────
+# Custom CSS — myBasePay Brand Guidelines
+#
+#   Primary:   MBP Emerald #006633  |  Prussian Blue #121631
+#              Wisteria Blue #7393f9  |  Alabaster Gray #e8e8e8
+#   Secondary: Frosted Mint #e7fcdb  |  Icy Blue #b7d4f7
+#              Marigold #ffbf00      |  White Smoke #f2f2f2
+#   Font:      Roboto  |  Corners: 12px rounded
+# ────────────────────────────────────────────────────────────────────────
 st.markdown(
     """
     <style>
-    /* ── Sidebar ─────────────────────────────────────────────────── */
+    /* ── Load Roboto from Google Fonts ──────────────────────────── */
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Roboto', sans-serif !important;
+    }
+
+    /* ── Sidebar — Prussian Blue background ────────────────────── */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0f1c2e 0%, #162a3e 100%);
+        background: #121631;
     }
     [data-testid="stSidebar"] * {
-        color: #cdd8e4 !important;
+        color: #e8e8e8 !important;
     }
     [data-testid="stSidebar"] h1 {
         color: #ffffff !important;
+        font-family: 'Roboto', sans-serif !important;
+        font-weight: 900 !important;
         font-size: 1.5rem !important;
         margin-bottom: 0.25rem !important;
     }
     [data-testid="stSidebar"] .stMarkdown a {
-        color: #4ecdc4 !important;
+        color: #7393f9 !important;
     }
 
-    /* ── Sidebar source pills ──────────────────────────────────── */
+    /* ── Sidebar source pills — Emerald tint ───────────────────── */
     [data-testid="stSidebar"] .source-item {
-        background: rgba(78, 205, 196, 0.08);
-        border: 1px solid rgba(78, 205, 196, 0.2);
-        border-radius: 6px;
+        background: rgba(0, 102, 51, 0.1);
+        border: 1px solid rgba(0, 102, 51, 0.25);
+        border-radius: 12px;
         padding: 8px 12px;
         margin-bottom: 6px;
         font-size: 0.78rem;
         line-height: 1.4;
-        color: #a0b8cc !important;
+        color: #b7d4f7 !important;
         word-wrap: break-word;
         overflow-wrap: break-word;
     }
@@ -73,43 +90,52 @@ st.markdown(
     /* ── Sidebar description ───────────────────────────────────── */
     [data-testid="stSidebar"] .sidebar-desc {
         font-size: 0.85rem;
-        color: #8fa3b8 !important;
+        color: #afafaf !important;
         line-height: 1.5;
         margin-bottom: 0.5rem;
     }
 
     /* ── Sidebar divider ───────────────────────────────────────── */
     [data-testid="stSidebar"] hr {
-        border-color: rgba(255,255,255,0.08) !important;
+        border-color: rgba(255, 255, 255, 0.08) !important;
     }
 
-    /* ── Clear Chat button ─────────────────────────────────────── */
+    /* ── Clear Chat button — Marigold hover ────────────────────── */
     [data-testid="stSidebar"] button {
-        background: rgba(255,255,255,0.06) !important;
-        border: 1px solid rgba(255,255,255,0.12) !important;
-        color: #8fa3b8 !important;
-        border-radius: 8px !important;
+        background: rgba(255, 255, 255, 0.06) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        color: #e8e8e8 !important;
+        border-radius: 12px !important;
+        font-family: 'Roboto', sans-serif !important;
+        font-weight: 500 !important;
         transition: all 0.2s ease;
     }
     [data-testid="stSidebar"] button:hover {
-        background: rgba(78, 205, 196, 0.12) !important;
-        border-color: rgba(78, 205, 196, 0.3) !important;
-        color: #4ecdc4 !important;
+        background: rgba(255, 191, 0, 0.15) !important;
+        border-color: rgba(255, 191, 0, 0.4) !important;
+        color: #ffbf00 !important;
     }
 
-    /* ── Main chat area ────────────────────────────────────────── */
+    /* ── Main chat input — Emerald focus ring ──────────────────── */
     .stChatInput > div {
-        border-color: #2a3f54 !important;
+        border-color: #e8e8e8 !important;
         border-radius: 12px !important;
     }
     .stChatInput > div:focus-within {
-        border-color: #4ecdc4 !important;
+        border-color: #006633 !important;
+        box-shadow: 0 0 0 1px #006633 !important;
     }
 
-    /* ── Source expander ────────────────────────────────────────── */
+    /* ── Source expander — Emerald accent ───────────────────────── */
     .streamlit-expanderHeader {
         font-size: 0.85rem !important;
-        color: #3a7ca5 !important;
+        color: #006633 !important;
+        font-family: 'Roboto', sans-serif !important;
+    }
+
+    /* ── Global rounded corners on cards/containers ────────────── */
+    [data-testid="stExpander"] {
+        border-radius: 12px !important;
     }
     </style>
     """,
