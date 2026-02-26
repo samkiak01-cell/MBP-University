@@ -2,10 +2,10 @@
 MBP University — Main Streamlit Application
 """
 
+import os
 import logging
 import streamlit as st
 import anthropic
-from sentence_transformers import SentenceTransformer
 
 from config import (
     APP_TITLE,
@@ -15,13 +15,14 @@ from config import (
     CLAUDE_MODEL,
     MAX_TOKENS,
     EMBEDDING_MODEL,
+    EMBEDDING_DIMENSION,
     DOCUMENTS_DIR,
 )
 from ingest import ingest_all, build_vector_store
 from retriever import search, format_context, format_sources_for_display
 
-# ── Logging (visible in Streamlit Cloud logs) ───────────────────────────
-logging.basicConfig(level=logging.INFO)
+# ── Logging (visible in Streamlit Cloud → Manage app → Logs) ────────────
+logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(name)s | %(message)s")
 logger = logging.getLogger("mbp_university")
 
 # ── Page Config ─────────────────────────────────────────────────────────
@@ -32,13 +33,84 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Custom CSS ──────────────────────────────────────────────────────────
+# ── Custom CSS — myBasePay brand theme ──────────────────────────────────
 st.markdown(
     """
     <style>
-    [data-testid="stSidebar"] { background-color: #0e1a2b; }
-    [data-testid="stSidebar"] * { color: #e0e6ed !important; }
-    [data-testid="stSidebar"] .stMarkdown a { color: #6db3f2 !important; }
+    /* ── Sidebar ─────────────────────────────────────────────────── */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0f1c2e 0%, #162a3e 100%);
+    }
+    [data-testid="stSidebar"] * {
+        color: #cdd8e4 !important;
+    }
+    [data-testid="stSidebar"] h1 {
+        color: #ffffff !important;
+        font-size: 1.5rem !important;
+        margin-bottom: 0.25rem !important;
+    }
+    [data-testid="stSidebar"] .stMarkdown a {
+        color: #4ecdc4 !important;
+    }
+
+    /* ── Sidebar source pills ──────────────────────────────────── */
+    [data-testid="stSidebar"] .source-item {
+        background: rgba(78, 205, 196, 0.08);
+        border: 1px solid rgba(78, 205, 196, 0.2);
+        border-radius: 6px;
+        padding: 8px 12px;
+        margin-bottom: 6px;
+        font-size: 0.78rem;
+        line-height: 1.4;
+        color: #a0b8cc !important;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+    }
+    [data-testid="stSidebar"] .source-item .source-icon {
+        margin-right: 6px;
+    }
+
+    /* ── Sidebar description ───────────────────────────────────── */
+    [data-testid="stSidebar"] .sidebar-desc {
+        font-size: 0.85rem;
+        color: #8fa3b8 !important;
+        line-height: 1.5;
+        margin-bottom: 0.5rem;
+    }
+
+    /* ── Sidebar divider ───────────────────────────────────────── */
+    [data-testid="stSidebar"] hr {
+        border-color: rgba(255,255,255,0.08) !important;
+    }
+
+    /* ── Clear Chat button ─────────────────────────────────────── */
+    [data-testid="stSidebar"] button {
+        background: rgba(255,255,255,0.06) !important;
+        border: 1px solid rgba(255,255,255,0.12) !important;
+        color: #8fa3b8 !important;
+        border-radius: 8px !important;
+        transition: all 0.2s ease;
+    }
+    [data-testid="stSidebar"] button:hover {
+        background: rgba(78, 205, 196, 0.12) !important;
+        border-color: rgba(78, 205, 196, 0.3) !important;
+        color: #4ecdc4 !important;
+    }
+
+    /* ── Main chat area ────────────────────────────────────────── */
+    .stChatInput > div {
+        border-color: #2a3f54 !important;
+        border-radius: 12px !important;
+    }
+    .stChatInput > div:focus-within {
+        border-color: #4ecdc4 !important;
+    }
+
+    /* ── Source expander ────────────────────────────────────────── */
+    .streamlit-expanderHeader {
+        font-size: 0.85rem !important;
+        color: #3a7ca5 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -46,53 +118,73 @@ st.markdown(
 
 
 # ────────────────────────────────────────────────────────────────────────
-# Cached resource loaders
+# Cached resource loaders  (kept FLAT — no nested cache calls)
 # ────────────────────────────────────────────────────────────────────────
 
 @st.cache_resource(show_spinner="Loading embedding model …")
 def get_embedding_model():
+    from sentence_transformers import SentenceTransformer
     logger.info("Loading SentenceTransformer model …")
-    return SentenceTransformer(EMBEDDING_MODEL)
+    model = SentenceTransformer(EMBEDDING_MODEL)
+    logger.info("Embedding model loaded.")
+    return model
 
 
 @st.cache_resource(show_spinner="Indexing documents — this may take a minute on first boot …")
-def build_index():
+def build_index(_embed_model):
     """
-    Ingest every document in the documents/ folder, embed them, and
-    return (faiss_index, chunk_metadata_list, list_of_filenames).
-
-    Everything lives in RAM — no disk writes needed.
+    Ingest + embed all documents.  Returns (index, metadata, filenames).
     """
-    logger.info(f"Documents directory: {DOCUMENTS_DIR}")
+    logger.info(f"DOCUMENTS_DIR resolved to: {DOCUMENTS_DIR}")
+    logger.info(f"  exists?  {os.path.isdir(DOCUMENTS_DIR)}")
 
-    # --- Diagnostic: list what's actually in the directory ---------------
-    import os
     if os.path.isdir(DOCUMENTS_DIR):
         contents = os.listdir(DOCUMENTS_DIR)
-        logger.info(f"Files in documents/: {contents}")
+        logger.info(f"  contents: {contents}")
     else:
-        logger.error(f"documents/ directory NOT FOUND at {DOCUMENTS_DIR}")
+        logger.error(f"documents/ NOT FOUND at {DOCUMENTS_DIR}")
+        parent = os.path.dirname(DOCUMENTS_DIR)
+        if os.path.isdir(parent):
+            logger.error(f"  parent dir ({parent}) contains: {os.listdir(parent)}")
         return None, [], []
 
-    # --- Ingest ----------------------------------------------------------
-    chunks, filenames = ingest_all(DOCUMENTS_DIR)
+    try:
+        chunks, filenames = ingest_all(DOCUMENTS_DIR)
+    except Exception as e:
+        logger.error(f"Ingestion crashed: {e}", exc_info=True)
+        return None, [], []
+
     if not chunks:
         logger.warning("Ingestion returned 0 chunks.")
         return None, [], filenames
 
-    # --- Embed & build FAISS index --------------------------------------
-    model = get_embedding_model()
-    index = build_vector_store(chunks, model)
-    logger.info(f"Index ready: {index.ntotal} vectors, files={filenames}")
+    try:
+        index = build_vector_store(chunks, _embed_model)
+    except Exception as e:
+        logger.error(f"Embedding/FAISS crashed: {e}", exc_info=True)
+        return None, [], filenames
+
+    logger.info(f"Index ready: {index.ntotal} vectors from {filenames}")
     return index, chunks, filenames
 
 
 def get_anthropic_client():
-    """Create Anthropic client from Streamlit secrets."""
     api_key = st.secrets.get("ANTHROPIC_API_KEY")
     if not api_key:
         return None
     return anthropic.Anthropic(api_key=api_key)
+
+
+# ────────────────────────────────────────────────────────────────────────
+# Helper: pretty filename for sidebar
+# ────────────────────────────────────────────────────────────────────────
+
+def _pretty_filename(fn: str) -> tuple[str, str]:
+    """Return (icon, display_name) for a document filename."""
+    if fn.lower().endswith(".xlsx"):
+        return "📊", fn.replace("_", " ").replace("-", " ").rsplit(".", 1)[0]
+    else:
+        return "📄", fn.replace("_", " ").replace("-", " ").rsplit(".", 1)[0]
 
 
 # ────────────────────────────────────────────────────────────────────────
@@ -101,16 +193,26 @@ def get_anthropic_client():
 
 with st.sidebar:
     st.markdown(f"# {APP_TITLE}")
-    st.markdown(f"*{APP_DESCRIPTION}*")
+    st.markdown(
+        f'<p class="sidebar-desc">{APP_DESCRIPTION}</p>',
+        unsafe_allow_html=True,
+    )
     st.divider()
 
-    # Build / load the index (cached after first run)
-    index, metadata, doc_filenames = build_index()
+    # Load model FIRST, then pass into build_index
+    embed_model = get_embedding_model()
+    index, metadata, doc_filenames = build_index(embed_model)
 
     if doc_filenames:
-        st.markdown("**📚 Loaded Sources:**")
+        st.markdown("**📚 Loaded Sources**")
         for fn in doc_filenames:
-            st.markdown(f"- `{fn}`")
+            icon, display = _pretty_filename(fn)
+            st.markdown(
+                f'<div class="source-item">'
+                f'<span class="source-icon">{icon}</span>{display}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
     else:
         st.warning("No documents found in the documents/ folder.")
 
@@ -119,9 +221,6 @@ with st.sidebar:
     if st.button("🗑️ Clear Chat", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
-
-    st.markdown("---")
-    st.caption("Powered by Claude · Anthropic")
 
 
 # ────────────────────────────────────────────────────────────────────────
@@ -139,9 +238,12 @@ if client is None:
 
 if index is None or not metadata:
     st.error(
-        "📭 **No documents indexed.** Make sure your `.docx` and `.xlsx` files "
-        "are committed inside the `documents/` folder in your GitHub repo, "
-        "then reboot the app."
+        "📭 **No documents indexed.**\n\n"
+        f"- **Documents dir checked:** `{DOCUMENTS_DIR}`\n"
+        f"- **Directory exists:** `{os.path.isdir(DOCUMENTS_DIR)}`\n"
+        f"- **Contents:** `{os.listdir(DOCUMENTS_DIR) if os.path.isdir(DOCUMENTS_DIR) else 'N/A'}`\n\n"
+        "Make sure `.docx` and `.xlsx` files are **committed** inside the "
+        "`documents/` folder in your GitHub repo, then reboot the app."
     )
     st.stop()
 
@@ -149,8 +251,6 @@ if index is None or not metadata:
 # ────────────────────────────────────────────────────────────────────────
 # Chat interface
 # ────────────────────────────────────────────────────────────────────────
-
-embed_model = get_embedding_model()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -171,7 +271,6 @@ for msg in st.session_state.messages:
 
 # Handle new input
 if prompt := st.chat_input("Ask MBP University a question …"):
-    # Display user message
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -183,7 +282,7 @@ if prompt := st.chat_input("Ask MBP University a question …"):
 
     # Build Claude messages (include recent history for follow-ups)
     claude_messages: list[dict] = []
-    for m in st.session_state.messages[-11:-1]:  # last 10 turns before current
+    for m in st.session_state.messages[-11:-1]:
         claude_messages.append({"role": m["role"], "content": m["content"]})
 
     user_content = (
