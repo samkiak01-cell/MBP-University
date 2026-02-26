@@ -1,80 +1,66 @@
 # 🎓 MBP University — Internal Knowledge Base Agent
 
-AI-powered internal knowledge assistant built with **Streamlit**, **Claude (Anthropic)**, and **FAISS**. Employees ask questions about company SOPs, benefits, payroll, contracts — and get accurate, sourced answers.
+An AI-powered internal knowledge assistant that lets employees ask questions about company SOPs, benefits, payroll, contracts, and more — and get accurate, sourced answers instantly.
 
 ---
 
 ## How It Works
 
-1. **Ingestion:** On app boot, all `.docx` and `.xlsx` files in `documents/` are parsed. SOP sections are detected via bold-text heading patterns. FAQ rows become individual searchable chunks.
-2. **Embedding:** Chunks are embedded with `all-MiniLM-L6-v2` (free, no API key) and stored in an in-memory FAISS index.
-3. **Retrieval:** User queries are embedded and matched against the index (top 5 results).
-4. **Generation:** Claude answers strictly from retrieved context, with source citations.
+1. **Document Ingestion** — On app startup, all `.docx` SOP files and `.xlsx` FAQ files in the `documents/` folder are automatically parsed. SOP section boundaries are detected by looking for bold uppercase text patterns (since our SOPs use bold List Paragraph formatting, not Word heading styles). The FAQ Excel is parsed row by row, preserving topic, location, and resource link metadata.
+
+2. **Chunking & Embedding** — SOP sections are split into overlapping chunks (up to ~1,000 tokens each) to keep search results precise. Each chunk is embedded into a numerical vector using the `all-MiniLM-L6-v2` model (free, runs locally, no API key needed). All vectors are stored in an in-memory FAISS index.
+
+3. **Retrieval** — When a user asks a question, the query is embedded and matched against the FAISS index. The top 5 most relevant chunks are retrieved.
+
+4. **Answer Generation** — The retrieved chunks are sent to Claude (Anthropic) as context. Claude answers strictly from that context and never makes anything up. If the answer isn't in the documents, it says so. Sources are displayed separately in a collapsible panel below each answer.
 
 ---
 
-## Deploy to Streamlit Community Cloud
-
-### 1. Prepare your GitHub repo
-
-Your repo should look like this:
+## Project Structure
 
 ```
 mbp-university/
-├── app.py
-├── ingest.py
-├── retriever.py
-├── config.py
-├── requirements.txt
-├── .gitignore
+├── app.py                 # Streamlit UI, chat loop, streaming Claude responses
+├── config.py              # All settings: paths, models, system prompt, UI text
+├── ingest.py              # Document parsing (.docx + .xlsx), chunking, FAISS indexing
+├── retriever.py           # Similarity search + source formatting for the UI
+├── requirements.txt       # Python dependencies
+├── .gitignore             # Keeps secrets.toml out of the repo
 ├── README.md
 ├── .streamlit/
-│   └── config.toml
+│   └── config.toml        # Streamlit theme (brand colors)
 └── documents/
     ├── MBP_University-_My_Professors_Brain.xlsx
-    └── Standard_Operating_Procedure__SOP__-_....docx
+    └── *.docx SOP files
 ```
-
-> ⚠️ **The files inside `documents/` MUST be committed to the repo.** Streamlit Cloud clones your repo — if the documents aren't committed, they won't exist on the server.
-
-### 2. Deploy
-
-1. Go to [share.streamlit.io](https://share.streamlit.io)
-2. Click **"New app"** → select your repo, branch `main`, main file **`app.py`**
-3. Click **"Advanced settings"** → **"Secrets"** and paste:
-
-```toml
-ANTHROPIC_API_KEY = "sk-ant-your-key-here"
-```
-
-4. Click **Deploy**
-
-First boot takes 3–5 minutes (downloads the embedding model + indexes documents). After that, reboots are fast thanks to caching.
 
 ---
 
 ## Adding New Documents
 
-1. Add any `.docx` SOP or `.xlsx` FAQ file to the `documents/` folder
+1. Drop any `.docx` SOP or `.xlsx` FAQ file into the `documents/` folder
 2. Commit and push to GitHub
-3. In Streamlit Cloud, click the **⋮ menu** → **Reboot app**
+3. Reboot the app in Streamlit Cloud (⋮ menu → Reboot app)
 
-The app will re-index automatically on reboot.
+The app re-indexes automatically on every reboot. No code changes needed.
 
 ---
 
-## Local Development (Optional)
+## Tech Stack
 
-```bash
-pip install -r requirements.txt
+| Component | Technology |
+|---|---|
+| Frontend & Hosting | Streamlit (Community Cloud) |
+| LLM | Claude Sonnet via Anthropic API |
+| Embeddings | `all-MiniLM-L6-v2` (free, no API key) |
+| Vector Store | FAISS (in-memory) |
+| Document Parsing | `python-docx` for SOPs, `openpyxl` for FAQ Excel |
 
-# Create secrets file
-mkdir -p .streamlit
-echo 'ANTHROPIC_API_KEY = "sk-ant-your-key-here"' > .streamlit/secrets.toml
+---
 
-# Run
-streamlit run app.py
-```
+## Security
+
+All API keys are managed through Streamlit's built-in secrets system (`st.secrets`). No keys are ever hardcoded in the source code. The `.streamlit/secrets.toml` file is gitignored and never committed.
 
 ---
 
@@ -82,20 +68,7 @@ streamlit run app.py
 
 | Issue | Fix |
 |---|---|
-| **"API key not found"** | Add `ANTHROPIC_API_KEY` in Streamlit Cloud → Settings → Secrets |
-| **"No documents indexed"** | Make sure `.docx`/`.xlsx` files are **committed** in `documents/` (not gitignored) |
-| **App crashes on boot** | Check Streamlit Cloud logs (Manage app → Logs). Common: dependency install failure |
-| **Slow first load** | Normal — the embedding model (~90 MB) downloads once, then is cached |
-| **Out of memory** | Free tier has 1 GB RAM. If you have many large SOPs, consider the paid tier |
-
----
-
-## Security
-
-- **No API keys in code.** All secrets use `st.secrets` (Streamlit's built-in secret manager).
-- `.streamlit/secrets.toml` is in `.gitignore` and never committed.
-- The repo can be public — only the Streamlit Cloud secrets dashboard holds sensitive values.
-
----
-
-*Internal use — MBP*
+| "API key not found" | Add `ANTHROPIC_API_KEY` in Streamlit Cloud → Settings → Secrets |
+| "No documents indexed" | Make sure files are committed in `documents/`, not gitignored |
+| Slow first load | Normal — embedding model downloads once (~90 MB), then cached |
+| Answers seem outdated after adding docs | Reboot the app to trigger re-indexing |
