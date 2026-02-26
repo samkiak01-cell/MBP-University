@@ -65,34 +65,51 @@ def format_context(results: list[dict]) -> str:
 
 
 def format_sources_for_display(results: list[dict]) -> str:
-    """Human-readable source list for the UI expander."""
+    """
+    Clean, grouped source list for the UI expander.
+    Groups by document, deduplicates sections, and shows FAQ resources.
+    """
     if not results:
         return "No sources found."
 
-    lines = []
-    seen: set[str] = set()
+    # Group: SOP sources by filename, FAQ sources separately
+    sop_sources: dict[str, list[str]] = {}  # filename → list of section names
+    faq_sources: list[dict] = []
+    seen_faq: set[str] = set()
+
     for r in results:
         if r.get("type") == "faq":
-            key = f"faq-{r.get('question', '')}"
-            if key in seen:
+            q = r.get("question", "")
+            if q in seen_faq:
                 continue
-            seen.add(key)
-            line = (
-                f"• **MBP University FAQ** → Topic: {r.get('topic', 'N/A')}, "
-                f"Row: \"{r.get('question', 'N/A')}\""
-            )
-            lines.append(line)
-            if r.get("resource_link"):
-                lines.append(f"  🔗 Related Resource: {r['resource_link']}")
+            seen_faq.add(q)
+            faq_sources.append(r)
         else:
-            key = f"sop-{r.get('source', '')}-{r.get('section', '')}"
-            if key in seen:
-                continue
-            seen.add(key)
-            line = (
-                f"• **{r.get('source', 'Unknown')}** → "
-                f"Section: \"{r.get('section', 'N/A')}\""
-            )
-            lines.append(line)
+            fname = r.get("source", "Unknown")
+            section = r.get("section", "N/A")
+            if fname not in sop_sources:
+                sop_sources[fname] = []
+            if section not in sop_sources[fname]:
+                sop_sources[fname].append(section)
 
-    return "\n".join(lines)
+    lines: list[str] = []
+
+    # SOP sources grouped by document
+    for fname, sections in sop_sources.items():
+        display_name = fname.replace("_", " ").replace("-", " ").rsplit(".", 1)[0]
+        lines.append(f"📄 **{display_name}**")
+        for sec in sections:
+            lines.append(f"&nbsp;&nbsp;&nbsp;&nbsp;• {sec}")
+        lines.append("")  # blank line between groups
+
+    # FAQ sources
+    for r in faq_sources:
+        topic = r.get("topic", "General")
+        question = r.get("question", "N/A")
+        lines.append(f"📊 **MBP University FAQ** — {topic}")
+        lines.append(f"&nbsp;&nbsp;&nbsp;&nbsp;• {question}")
+        if r.get("resource_link"):
+            lines.append(f"&nbsp;&nbsp;&nbsp;&nbsp;🔗 {r['resource_link']}")
+        lines.append("")
+
+    return "\n".join(lines).strip()
